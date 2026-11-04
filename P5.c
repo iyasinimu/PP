@@ -5,55 +5,45 @@ its portion of matrix multiplication and sends the result
 back to the root.
 */
 #include <stdio.h>
-#include <stdlib.h>
 #include <mpi.h>
-#define N 4
 
-int main(int argc, char *argv[]) {
+int main(int argc, char *argv[])
+{
     int rank, size;
+    int A[2][2] = {{1,2},{3,4}};
+    int B[2][2] = {{5,6},{7,8}};
+    int row[2], result[2], C[2][2];
 
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-    if (N % size != 0) {
-        if (rank == 0) printf("N (%d) must be divisible by process count (%d).\n", N, size);
+    if (size != 2) {
+        if (rank == 0) printf("Run with 2 processes.\n");
         MPI_Finalize();
         return 0;
     }
 
-    int rows_per_proc = N / size;
-    int A[N][N], B[N][N], C[N][N];
-    int local_A[rows_per_proc][N], local_C[rows_per_proc][N];
-
     if (rank == 0) {
-        for (int i = 0; i < N; i++) {
-            for (int j = 0; j < N; j++) {
-                A[i][j] = i + j + 1;
-                B[i][j] = (i == j) ? 1 : 2;
-            }
-        }
+        C[0][0] = A[0][0]*B[0][0] + A[0][1]*B[1][0];
+        C[0][1] = A[0][0]*B[0][1] + A[0][1]*B[1][1];
+
+        MPI_Send(A[1], 2, MPI_INT, 1, 0, MPI_COMM_WORLD);
+    }
+    else {
+        MPI_Recv(row, 2, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+        result[0] = row[0]*B[0][0] + row[1]*B[1][0];
+        result[1] = row[0]*B[0][1] + row[1]*B[1][1];
+
+        MPI_Send(result, 2, MPI_INT, 0, 1, MPI_COMM_WORLD);
     }
 
-    MPI_Bcast(B, N * N, MPI_INT, 0, MPI_COMM_WORLD);
-    MPI_Scatter(A, rows_per_proc * N, MPI_INT, local_A, rows_per_proc * N, MPI_INT, 0, MPI_COMM_WORLD);
-
-    for (int i = 0; i < rows_per_proc; i++) {
-        for (int j = 0; j < N; j++) {
-            local_C[i][j] = 0;
-            for (int k = 0; k < N; k++)
-                local_C[i][j] += local_A[i][k] * B[k][j];
-        }
-    }
-
-    MPI_Gather(local_C, rows_per_proc * N, MPI_INT, C, rows_per_proc * N, MPI_INT, 0, MPI_COMM_WORLD);
-
     if (rank == 0) {
-        printf("Result Matrix C (%dx%d):\n", N, N);
-        for (int i = 0; i < N; i++) {
-            for (int j = 0; j < N; j++) printf("%d ", C[i][j]);
-            printf("\n");
-        }
+        MPI_Recv(C[1], 2, MPI_INT, 1, 1,MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        printf("Matrix C = A x B\n");
+        printf("%d %d\n", C[0][0], C[0][1]);
+        printf("%d %d\n", C[1][0], C[1][1]);
     }
 
     MPI_Finalize();
